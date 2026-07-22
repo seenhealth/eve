@@ -8,7 +8,6 @@ import {
   SiDatadog,
   SiEgnyte,
   SiGooglechat,
-  SiMatrix,
   SiHuggingface,
   SiMake,
   SiMessenger,
@@ -311,7 +310,14 @@ export const ticketTailorLogo = (props: LogoProps) => (
   </svg>
 );
 
-export const matrixLogo = (props: LogoProps) => <SiMatrix color="default" {...props} />;
+export const beeperLogo = (props: LogoProps) => (
+  <svg fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" {...props}>
+    <path
+      d="M5 3h8c3.8 0 6 1.8 6 4.7 0 1.8-.9 3.2-2.5 4 2.1.7 3.3 2.2 3.3 4.3 0 3.2-2.5 5-6.6 5H5V3Zm3 2.7v4.8h4.7c2.1 0 3.2-.8 3.2-2.4 0-1.6-1.1-2.4-3.2-2.4H8Zm0 7.4v5.2h5c2.4 0 3.6-.9 3.6-2.6 0-1.7-1.2-2.6-3.6-2.6H8Z"
+      fill="currentColor"
+    />
+  </svg>
+);
 
 export const googlechatLogo = (props: LogoProps) => <SiGooglechat color="default" {...props} />;
 
@@ -385,7 +391,7 @@ export const logos = {
   zapier: zapierLogo,
   zomato: zomatoLogo,
 
-  matrix: matrixLogo,
+  beeper: beeperLogo,
   googlechat: googlechatLogo,
   whatsapp: whatsappLogo,
   messenger: messengerLogo,

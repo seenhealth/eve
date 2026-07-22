@@ -500,7 +500,7 @@ Credentials come from the \`createMessengerAdapter\` config or the adapter's env
     configure: `The adapter mounts its webhook at \`/eve/v1/messenger\`. Point your Messenger webhook at it. The adapter owns provider auth, verification, and delivery, while eve owns session dispatch, streaming, typing, and human-in-the-loop. See the [Chat SDK channel docs](/docs/channels/chat-sdk) for routes, streaming, and state options.`,
   },
   "chat-sdk-beeper": {
-    logo: "matrix",
+    logo: "beeper",
     docsHref: "/docs/channels/chat-sdk",
     badge: "Provider official",
     keywords: ["chat sdk", "matrix", "beeper", "encrypted chat", "e2ee", "signal", "instagram"],
