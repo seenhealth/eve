@@ -494,7 +494,7 @@ Credentials come from the \`createMessengerAdapter\` config or the adapter's env
   "chat-sdk-photon": {
     logo: "imessage",
     docsHref: "/docs/channels/chat-sdk",
-    badge: "Chat SDK",
+    badge: "Provider official",
     keywords: [
       "chat sdk",
       "imessage",
