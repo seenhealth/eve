@@ -1,5 +1,11 @@
 # eve
 
+## 0.27.2
+
+### Patch Changes
+
+- 835f076: Emit an initial NDJSON whitespace byte when opening a session event stream so clients and proxies receive the response body before the first durable event.
+
 ## 0.27.1
 
 ### Patch Changes
