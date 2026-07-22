@@ -491,6 +491,65 @@ export default channel;
 Credentials come from the \`createMessengerAdapter\` config or the adapter's environment variables; see the [Messenger adapter docs](https://chat-sdk.dev/adapters/official/messenger).`,
     configure: `The adapter mounts its webhook at \`/eve/v1/messenger\`. Point your Messenger webhook at it. The adapter owns provider auth, verification, and delivery, while eve owns session dispatch, streaming, typing, and human-in-the-loop. See the [Chat SDK channel docs](/docs/channels/chat-sdk) for routes, streaming, and state options.`,
   },
+  "chat-sdk-imessage": {
+    logo: "imessage",
+    docsHref: "/docs/channels/chat-sdk",
+    badge: "Chat SDK",
+    keywords: [
+      "chat sdk",
+      "imessage",
+      "apple messages",
+      "sms",
+      "mms",
+      "rcs",
+      "photon",
+      "sendblue",
+      "linq",
+      "agentphone",
+      "dial",
+    ],
+    install: `Install eve, Chat SDK, the iMessage adapter, and a state adapter:
+
+\`\`\`bash
+npm install eve@latest chat @photon-ai/chat-adapter-imessage @chat-adapter/state-memory
+\`\`\`
+
+The in-memory state store is for local development. Use Redis or PostgreSQL in production. The adapter is vendor-official.`,
+    quickStart: `Create \`agent/channels/imessage.ts\`:
+
+\`\`\`ts
+// agent/channels/imessage.ts
+import { createiMessageAdapter } from "@photon-ai/chat-adapter-imessage";
+import { createMemoryState } from "@chat-adapter/state-memory";
+import { chatSdkChannel } from "eve/channels/chat-sdk";
+
+export const { bot, channel, send } = chatSdkChannel({
+  userName: "My Agent",
+  adapters: {
+    imessage: createiMessageAdapter({
+      local: false,
+      projectId: process.env.IMESSAGE_PROJECT_ID,
+      projectSecret: process.env.IMESSAGE_PROJECT_SECRET,
+    }),
+  },
+  state: createMemoryState(),
+});
+
+bot.onNewMention(async (thread, message) => {
+  await thread.subscribe();
+  await send(message.text, { thread });
+});
+
+bot.onSubscribedMessage(async (thread, message) => {
+  await send(message.text, { thread });
+});
+
+export default channel;
+\`\`\`
+
+See the [iMessage adapter documentation](https://chat-sdk.dev/adapters/vendor-official/photon) for all supported events and credentials.`,
+    configure: `Photon is the recommended adapter because it is dedicated to iMessage and supports cloud, self-hosted, and local macOS deployments. Set \`IMESSAGE_PROJECT_ID\` and \`IMESSAGE_PROJECT_SECRET\`, then point Photon’s signed webhook at \`/eve/v1/imessage\`. Other vendor-official choices are [Sendblue](https://chat-sdk.dev/adapters/vendor-official/sendblue) for iMessage/SMS/RCS, [Linq](https://chat-sdk.dev/adapters/vendor-official/linq) for iMessage/SMS, and [AgentPhone](https://chat-sdk.dev/adapters/vendor-official/agentphone) or [Dial](https://chat-sdk.dev/adapters/vendor-official/dial) when voice is part of the same agent. [Blooio](https://chat-sdk.dev/adapters/community/blooio) is a community option. See the [Chat SDK channel docs](/docs/channels/chat-sdk) for eve session dispatch, state, streaming, and human-in-the-loop behavior.`,
+  },
 };
 
 const extensionPresentations: Record<string, ExtensionPresentation> = {
