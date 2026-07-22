@@ -159,6 +159,7 @@ describe("telegramChannel() inbound route", () => {
     expect(String((payload as { message: string }).message)).toContain("hello");
     expect(options).toMatchObject({
       auth: {
+        attributes: { display_name: "Ada" },
         authenticator: "telegram-webhook",
         principalId: "telegram:42",
       },

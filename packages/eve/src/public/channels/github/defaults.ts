@@ -31,6 +31,7 @@ export function defaultGitHubAuth(ctx: GitHubInboundContext): SessionAuthContext
     attributes: {
       conversation_kind: ctx.conversation.kind,
       delivery_id: ctx.delivery.id,
+      display_name: sender.login,
       installation_id: String(ctx.github.installationId ?? ""),
       issue_number: String(ctx.conversation.issueNumber ?? ""),
       pull_request_number: String(ctx.conversation.pullRequestNumber ?? ""),

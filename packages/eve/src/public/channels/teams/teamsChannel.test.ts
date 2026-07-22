@@ -210,7 +210,10 @@ describe("teamsChannel", () => {
     expect(send).toHaveBeenCalledWith(
       { inputResponses: [{ optionId: "approve", requestId: "REQ" }] },
       expect.objectContaining({
-        auth: expect.objectContaining({ subject: "AAD_USER" }),
+        auth: expect.objectContaining({
+          attributes: expect.objectContaining({ display_name: "Ada" }),
+          subject: "AAD_USER",
+        }),
         continuationToken: "TENANT:CONV:THREAD_ROOT",
       }),
     );

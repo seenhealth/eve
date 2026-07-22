@@ -560,6 +560,7 @@ describe("defaultDiscordAuth", () => {
     expect(auth).toMatchObject({
       attributes: {
         channel_id: "C01",
+        display_name: "ada",
         guild_id: "G01",
         interaction_id: "I01",
         user_id: "U01",

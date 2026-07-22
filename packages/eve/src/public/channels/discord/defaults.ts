@@ -26,6 +26,7 @@ export function defaultDiscordAuth(interaction: DiscordCommandInteraction): Sess
   };
   if (interaction.guildId !== undefined) attributes.guild_id = interaction.guildId;
   if (interaction.member?.nick !== undefined) attributes.member_nick = interaction.member.nick;
+  attributes.display_name = interaction.member?.nick ?? interaction.user.username;
 
   const issuer = interaction.guildId ? `discord:${interaction.guildId}` : "discord";
   const principalId = interaction.guildId

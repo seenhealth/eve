@@ -168,6 +168,7 @@ describe("linearChannel inbound Agent Session events", () => {
     expect(payload.context[0]).toContain("issue_identifier: EVE-123");
     expect(options).toMatchObject({
       auth: {
+        attributes: { display_name: "Ada Lovelace" },
         authenticator: "linear-agent-webhook",
         principalId: "linear:user_1",
       },

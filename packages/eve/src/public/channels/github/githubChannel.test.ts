@@ -240,6 +240,7 @@ describe("githubChannel", () => {
         attributes: {
           conversation_kind: "issue",
           delivery_id: "delivery-1",
+          display_name: "octocat",
           issue_number: "5",
           repository: "vercel/eve",
           user_login: "octocat",

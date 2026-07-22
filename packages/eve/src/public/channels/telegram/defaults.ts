@@ -28,6 +28,9 @@ export function defaultTelegramAuth(message: TelegramMessage): SessionAuthContex
     attributes.message_thread_id = String(message.messageThreadId);
   }
   if (user.username !== undefined) attributes.username = user.username;
+  const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ");
+  const displayName = fullName || user.username;
+  if (displayName !== undefined) attributes.display_name = displayName;
 
   const groupScoped = message.chat.type === "group" || message.chat.type === "supergroup";
   const principalId = groupScoped

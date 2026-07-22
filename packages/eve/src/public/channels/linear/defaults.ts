@@ -32,7 +32,9 @@ export function defaultLinearAuth(event: LinearAgentSessionEvent): SessionAuthCo
     attributes.issue_identifier = event.agentSession.issue.identifier;
   }
   if (user !== undefined) {
+    const displayName = user.displayName ?? user.name;
     const label = linearUserLabel(user);
+    if (displayName !== undefined) attributes.display_name = displayName;
     if (label !== undefined) attributes.user = label;
   }
 

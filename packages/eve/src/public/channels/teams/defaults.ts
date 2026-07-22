@@ -26,7 +26,10 @@ export function defaultTeamsAuth(
     scope: message.scope,
     user_id: message.from.id,
   };
-  if (message.from.name !== undefined) attributes.user_name = message.from.name;
+  if (message.from.name !== undefined) {
+    attributes.display_name = message.from.name;
+    attributes.user_name = message.from.name;
+  }
   if (message.from.aadObjectId !== undefined) attributes.aad_object_id = message.from.aadObjectId;
   if (tenantId !== undefined) attributes.tenant_id = tenantId;
   if (message.teamId !== undefined) attributes.team_id = message.teamId;
