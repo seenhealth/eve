@@ -57,7 +57,7 @@ vi.mock("#internal/nitro/routes/runtime-artifacts.js", () => ({
   resolveNitroCompiledArtifactsSource: () => ({}),
 }));
 vi.mock("#execution/sandbox/development-prewarm.js", () => ({
-  startDevelopmentSandboxPrewarmInBackground: vi.fn(),
+  startDevelopmentSandboxPrewarmInBackground: vi.fn(() => Promise.resolve()),
 }));
 
 function createHost(

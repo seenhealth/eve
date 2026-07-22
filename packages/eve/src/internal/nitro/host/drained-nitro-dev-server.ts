@@ -400,7 +400,13 @@ export class DrainedNitroDevServer {
       });
       await writeResponse(response, workerResponse, requestAbort.signal);
     } catch (error) {
-      if (!requestAbort.signal.aborted) {
+      // Once the server is closing, a request only fails because its worker was
+      // torn down under it. Writing a 5xx here would be delivered to the caller
+      // (e.g. the workflow queue) as a real error response — surfacing as a
+      // spurious "Queue message failed … socket hang up" during shutdown. Leave
+      // the socket to be destroyed by #close() so the caller sees a transport
+      // hang-up it can treat as shutdown instead.
+      if (!requestAbort.signal.aborted && !this.#closed) {
         writeRequestError(response, error);
       }
     } finally {

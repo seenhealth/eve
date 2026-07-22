@@ -123,8 +123,8 @@ const mocks = vi.hoisted(() => {
     rm: vi.fn(async (path: string) => {
       files.delete(path);
     }),
-    startDevelopmentSandboxPrewarmInBackground: vi.fn(() => undefined),
-    pruneLocalSandboxTemplatesInBackground: vi.fn(() => undefined),
+    startDevelopmentSandboxPrewarmInBackground: vi.fn(() => Promise.resolve()),
+    pruneLocalSandboxTemplatesInBackground: vi.fn(() => Promise.resolve()),
     stopDevelopmentSandboxResources: vi.fn(async () => undefined),
     resolveDiscoveryProject: vi.fn(async () => ({
       agentRoot: "/tmp/eve-test/agent",
@@ -393,8 +393,11 @@ describe("createDevelopmentServer", () => {
         kind: "disk",
         moduleMapLoaderPath: "/tmp/eve-package/authored-module-map-loader.ts",
       },
+      signal: expect.any(AbortSignal),
     });
-    expect(mocks.pruneLocalSandboxTemplatesInBackground).toHaveBeenCalledWith("/tmp/eve-test");
+    expect(mocks.pruneLocalSandboxTemplatesInBackground).toHaveBeenCalledWith("/tmp/eve-test", {
+      signal: expect.any(AbortSignal),
+    });
     expect(mocks.createParentDevelopmentWorkflowWorld).toHaveBeenCalledWith(
       expect.objectContaining({ agentName: "test-agent", appRoot: "/tmp/eve-test" }),
     );

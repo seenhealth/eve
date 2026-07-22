@@ -350,10 +350,49 @@ if (await isDirectExecution()) {
     }
     process.exitCode = 1;
   } finally {
-    // The CLI bootstraps build/dev toolchains that can leave native service
-    // handles alive after the command has completed. Once the top-level
-    // command resolves, terminate the bin process explicitly so commands like
-    // `eve dev` + `/exit` do not hang on leaked implementation details.
-    process.exit(process.exitCode ?? 0);
+    installExitBackstop();
   }
+}
+
+/**
+ * Once the top-level command resolves, the process should exit on its own as
+ * the event loop drains. A command that leaves a handle alive (a leaked timer,
+ * an unterminated worker, a wedged socket) would otherwise hang the terminal —
+ * historically papered over by an unconditional `process.exit()` that masked
+ * the leak. Instead, arm an unref'd deadline: a clean shutdown exits
+ * immediately (the timer never holds the loop open), and only a genuine leak
+ * trips the backstop, which reports the offending handles before forcing exit
+ * so the regression is diagnosable rather than silent.
+ */
+function installExitBackstop() {
+  const graceMs = Number(process.env.EVE_EXIT_BACKSTOP_MS ?? "2000");
+  const backstop = setTimeout(
+    () => {
+      if (process.env.EVE_DEV_TRACE_EXIT?.trim()) {
+        console.error(
+          `[eve:dev] event loop did not drain within ${graceMs}ms; active resources: ${summarizeActiveResources()}`,
+        );
+      }
+      process.exit(process.exitCode ?? 0);
+    },
+    Number.isFinite(graceMs) && graceMs > 0 ? graceMs : 2000,
+  );
+  // The backstop must never itself keep the process alive.
+  backstop.unref?.();
+}
+
+/** Counts the handles/requests still registered with the event loop, by kind. */
+function summarizeActiveResources() {
+  const info = process.getActiveResourcesInfo?.();
+  if (info === undefined || info.length === 0) {
+    return "none";
+  }
+  const counts = new Map();
+  for (const resource of info) {
+    counts.set(resource, (counts.get(resource) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([name, count]) => `${name}×${count}`)
+    .join(", ");
 }

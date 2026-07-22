@@ -65,10 +65,18 @@ export async function pruneLocalSandboxTemplates(input: {
 
 /**
  * Starts best-effort cleanup for stale local sandbox templates without
- * delaying `eve dev` startup or rebuild handling.
+ * delaying `eve dev` startup or rebuild handling. Returns the settled
+ * promise so `eve dev` shutdown can await it under a bounded deadline
+ * instead of leaving it detached.
  */
-export function pruneLocalSandboxTemplatesInBackground(appRoot: string): void {
-  void pruneLocalSandboxTemplates({ appRoot }).catch((error) => {
+export function pruneLocalSandboxTemplatesInBackground(
+  appRoot: string,
+  options: { readonly signal?: AbortSignal } = {},
+): Promise<void> {
+  return pruneLocalSandboxTemplates({ appRoot }).catch((error) => {
+    if (options.signal?.aborted === true) {
+      return;
+    }
     console.warn(`[eve:dev] failed to prune stale local sandbox templates: ${errorMessage(error)}`);
   });
 }

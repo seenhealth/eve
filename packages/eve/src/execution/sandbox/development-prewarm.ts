@@ -23,12 +23,16 @@ export function startDevelopmentSandboxPrewarmInBackground(input: {
   readonly appRoot: string;
   readonly compiledArtifactsSource: RuntimeCompiledArtifactsSource;
   readonly log?: (message: string) => void;
-}): void {
+  readonly signal?: AbortSignal;
+}): Promise<void> {
   const keys = resolvePrewarmKeys(input);
   const existing = findPendingPrewarm(keys);
   if (existing !== undefined) {
     registerPrewarmAliases(keys, existing);
-    return;
+    return existing.promise.then(
+      () => undefined,
+      () => undefined,
+    );
   }
 
   const record: DevelopmentPrewarmRecord = {
@@ -49,12 +53,19 @@ export function startDevelopmentSandboxPrewarmInBackground(input: {
     },
     shouldPrewarmSignature: (signature) =>
       completedDevelopmentPrewarmSignatures.get(signatureCacheKey) !== signature,
+    signal: input.signal,
   });
   record.promise = promise;
   registerPrewarmAliases(keys, record);
 
-  void promise
+  // The returned promise settles once the background prewarm finishes (or is
+  // aborted); `eve dev` shutdown awaits it under a bounded deadline so an
+  // in-flight prewarm cannot keep the event loop alive.
+  return promise
     .catch((error) => {
+      if (input.signal?.aborted === true) {
+        return;
+      }
       recordPrewarmLog(
         record,
         `eve: failed to initialize sandbox templates in the background: ${toErrorMessage(error)}`,

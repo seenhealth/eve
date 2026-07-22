@@ -2710,3 +2710,58 @@ describe("EveTUIRunner command outcome rendering", () => {
     expect(notices).toEqual([]);
   });
 });
+
+describe("EveTUIRunner shutdown signal", () => {
+  it("unwinds a blocked prompt read when the shutdown signal aborts", async () => {
+    const client = stubClient();
+    vi.spyOn(client, "info").mockResolvedValue(AGENT_INFO);
+    const prompt = createDeferred<string | undefined>();
+    const shutdown = new AbortController();
+
+    const renderer: AgentTUIRenderer = {
+      readPrompt: vi.fn(() => prompt.promise),
+      renderAgentHeader: vi.fn(),
+      renderStream: vi.fn(async () => {}),
+      // Mirror the real renderer: an external interrupt rejects the active reader.
+      requestInterrupt: vi.fn(() => prompt.reject(interruptedError())),
+    };
+
+    const runner = new EveTUIRunner({
+      session: stubSession(),
+      client,
+      renderer,
+      serverUrl: "http://localhost:3000",
+      shutdownSignal: shutdown.signal,
+    });
+
+    const run = runner.run();
+    await settleAsyncWork();
+    expect(renderer.readPrompt).toHaveBeenCalled();
+
+    shutdown.abort();
+
+    await expect(run).resolves.toBeUndefined();
+    expect(renderer.requestInterrupt).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns before reading a prompt when already aborted", async () => {
+    const client = stubClient();
+    vi.spyOn(client, "info").mockResolvedValue(AGENT_INFO);
+    const shutdown = new AbortController();
+    shutdown.abort();
+    const renderer = fakeRenderer({ requestInterrupt: vi.fn() });
+
+    const runner = new EveTUIRunner({
+      session: stubSession(),
+      client,
+      renderer,
+      serverUrl: "http://localhost:3000",
+      shutdownSignal: shutdown.signal,
+    });
+
+    await runner.run();
+
+    expect(renderer.readPrompt).not.toHaveBeenCalled();
+    expect(renderer.requestInterrupt).toHaveBeenCalled();
+  });
+});

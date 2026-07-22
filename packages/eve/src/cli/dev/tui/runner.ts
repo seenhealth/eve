@@ -301,6 +301,11 @@ export type AgentTUIRenderer = {
    * lifecycle ends.
    */
   shutdown?(): void;
+  /**
+   * Unwinds the active prompt read or streaming turn on behalf of an external
+   * stop (an OS signal caught by the CLI), so the run loop can settle.
+   */
+  requestInterrupt?(): void;
 };
 
 export interface PromptCommandHandlerContext {
@@ -390,6 +395,12 @@ export type EveTUIRunnerOptions = TuiDisplayOptions & {
   onBootProgress?: DevBootProgressReporter;
   /** Parent-owned diagnostics recorder; omitted for remote and test renderers. */
   diagnostics?: DevDiagnostics;
+  /**
+   * Aborts when the CLI catches an OS SIGINT/SIGTERM. The runner then unwinds
+   * its run loop so shutdown proceeds gracefully instead of relying on the
+   * default signal disposition hard-killing the process.
+   */
+  shutdownSignal?: AbortSignal;
 };
 
 /** The attention-line issue for a Vercel auth state, or undefined when nothing's wrong. */
@@ -496,10 +507,14 @@ export class EveTUIRunner {
    */
   #sessionFailed = false;
   #unsubscribeDevelopmentSandboxLogs?: () => void;
+  /** Set when an OS signal asks the run loop to unwind; checked each iteration. */
+  #stopRequested = false;
+  readonly #shutdownSignal?: AbortSignal;
 
   constructor(options: EveTUIRunnerOptions) {
     this.#session = options.session;
     if (options.client !== undefined) this.#client = options.client;
+    if (options.shutdownSignal !== undefined) this.#shutdownSignal = options.shutdownSignal;
     this.#renderer = createRenderer(options);
     const pumpOptions: SubagentPumpOptions = { formatActionResultError };
     if (this.#client !== undefined) pumpOptions.client = this.#client;
@@ -620,9 +635,18 @@ export class EveTUIRunner {
   }
 
   async run() {
+    const onExternalStop = () => this.requestStop();
+    if (this.#shutdownSignal !== undefined) {
+      if (this.#shutdownSignal.aborted) {
+        this.requestStop();
+      } else {
+        this.#shutdownSignal.addEventListener("abort", onExternalStop, { once: true });
+      }
+    }
     try {
       await this.#run();
     } finally {
+      this.#shutdownSignal?.removeEventListener("abort", onExternalStop);
       this.#disposed = true;
       this.#authProbeAbort.abort();
       this.#subagentPump.abortAll();
@@ -636,6 +660,17 @@ export class EveTUIRunner {
       this.#mcpConnectionStatus?.dispose();
       this.#remoteConnection?.dispose();
     }
+  }
+
+  /**
+   * Unwinds the run loop on behalf of an external stop (an OS signal the CLI
+   * caught). Mirrors a user Ctrl-C: at a prompt the reader is rejected; mid-turn
+   * the current turn is interrupted and the loop, seeing the stop flag, returns
+   * before the next prompt.
+   */
+  requestStop(): void {
+    this.#stopRequested = true;
+    this.#renderer.requestInterrupt?.();
   }
 
   async #run() {
@@ -677,6 +712,9 @@ export class EveTUIRunner {
     }
 
     while (true) {
+      if (this.#stopRequested) {
+        return;
+      }
       if (!streamWithoutPrompt) {
         if (prompt == null) {
           if (!this.#renderer.readPrompt) {

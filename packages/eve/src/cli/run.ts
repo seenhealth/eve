@@ -7,6 +7,7 @@ import { isCodingAgentLaunch } from "#cli/agent-detection.js";
 import { eveCliBanner } from "#cli/banner.js";
 import { registerProjectCommands } from "#cli/commands/register-project-commands.js";
 import { resolveDevUiMode, resolveTuiDisplayOptions } from "#cli/dev/ui-options.js";
+import { installDevShutdownController, waitForProductionServer } from "#cli/dev/shutdown.js";
 import {
   parseDevelopmentHeaderOption,
   resolveDevelopmentUrlTarget,
@@ -156,39 +157,6 @@ function shouldPrintCliBootBanner(actionCommand: Command): boolean {
     actionCommand.name() === "dev" ||
     actionCommand.name() === "init"
   );
-}
-
-async function waitForShutdownSignal(input: { close(): Promise<void> }): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    let settled = false;
-
-    const cleanup = () => {
-      process.off("SIGINT", handleSignal);
-      process.off("SIGTERM", handleSignal);
-    };
-
-    const handleSignal = () => {
-      if (settled) {
-        return;
-      }
-
-      settled = true;
-      cleanup();
-      void input.close().then(resolve, reject);
-    };
-
-    process.once("SIGINT", handleSignal);
-    process.once("SIGTERM", handleSignal);
-  });
-}
-
-async function waitForProductionServer(input: ProductionServerHandle): Promise<void> {
-  await Promise.race([
-    input.wait(),
-    waitForShutdownSignal({
-      close: () => input.close(),
-    }),
-  ]);
 }
 
 function parsePortOption(value: string): number {
@@ -453,6 +421,11 @@ function createCliProgram(logger: CliLogger, runtime: CliRuntimeOverrides): Comm
       if (options.input !== undefined && mode === "headless") {
         throw new InvalidArgumentError("--input requires the interactive UI.");
       }
+      // One signal handler owns shutdown for every dev mode (remote, headless,
+      // interactive). Interactive TUI mode has no other signal path — Ctrl+C is
+      // a raw-mode keystroke — so without this a SIGTERM, or a Ctrl+C during
+      // teardown, would hit Node's default hard-kill disposition.
+      const shutdown = installDevShutdownController();
       let existingLocalDevelopmentServer = false;
       if (remoteServerUrl !== undefined) {
         const isActive =
@@ -486,6 +459,7 @@ function createCliProgram(logger: CliLogger, runtime: CliRuntimeOverrides): Comm
           target,
           initialInput: options.input,
           onBootProgress: report,
+          shutdownSignal: shutdown.signal,
           ...display,
         } satisfies RunDevelopmentTuiInput;
         if (remoteTarget?.headers !== undefined) {
@@ -495,75 +469,15 @@ function createCliProgram(logger: CliLogger, runtime: CliRuntimeOverrides): Comm
         }
       };
 
-      if (remoteServerUrl) {
-        const { loadDevelopmentEnvironmentFiles } = await import("#cli/dev/environment.js");
-        loadDevelopmentEnvironmentFiles(appRoot);
-        logger.log(
-          `↗ ${existingLocalDevelopmentServer ? "local" : "remote"} mode targeting ${theme.info(new URL(remoteServerUrl).host)}`,
-        );
-
-        if (mode === "headless") {
-          logger.log(
-            renderCliTaggedLine(theme, {
-              message: "Interactive UI disabled because the current terminal is not a TTY.",
-              tag: "dev",
-              tone: "warning",
-            }),
-          );
-          return;
-        }
-
-        logger.log("");
-        await runInteractiveUi({ serverUrl: remoteServerUrl });
-        return;
-      }
-
-      // Print spacing before the live row; a later write would strand the row.
-      if (mode === "tui") logger.log("");
-      const buildProgress = mode === "tui" ? startCliLiveRow(logger) : undefined;
-      const onBootProgress = createDevBootProgressReporter(buildProgress);
-      buildProgress?.update("Building your agent");
-
-      let closed = false;
-      let server: DevelopmentServer | undefined;
-      const closeServer = async () => {
-        if (closed || server === undefined) {
-          return;
-        }
-
-        closed = true;
-        // No-op when this instance attached to a server another process owns.
-        await server.close();
-      };
-
       try {
-        const startHost = runtime.startHost ?? (await loadStartHost());
-        server = startHost(appRoot, {
-          existing: mode === "tui" ? "attach-if-unconfigured" : "reject",
-          host: options.host,
-          onBootProgress,
-          port: options.port,
-        });
-        const handle = await server.start();
-
-        // The terminal UI's header already shows the server URL, and startup
-        // no longer clears the screen, so the line would linger as noise.
-        // Headless consumers (scripts, scenario tests) still parse it.
-        if (mode !== "tui") {
+        if (remoteServerUrl) {
+          const { loadDevelopmentEnvironmentFiles } = await import("#cli/dev/environment.js");
+          loadDevelopmentEnvironmentFiles(appRoot);
           logger.log(
-            renderCliTaggedLine(theme, {
-              message: `server listening at ${handle.url}`,
-              tag: "dev",
-              tone: "success",
-            }),
+            `↗ ${existingLocalDevelopmentServer ? "local" : "remote"} mode targeting ${theme.info(new URL(remoteServerUrl).host)}`,
           );
-        }
 
-        if (mode === "headless") {
-          // An explicit `--no-ui` is intentional and silent; a non-TTY
-          // terminal that did not ask for headless gets a hint so the
-          // missing UI is not mistaken for a hang.
-          if (options.ui !== false && !interactive) {
+          if (mode === "headless") {
             logger.log(
               renderCliTaggedLine(theme, {
                 message: "Interactive UI disabled because the current terminal is not a TTY.",
@@ -571,17 +485,86 @@ function createCliProgram(logger: CliLogger, runtime: CliRuntimeOverrides): Comm
                 tone: "warning",
               }),
             );
+            return;
           }
 
-          return await waitForShutdownSignal({
-            close: closeServer,
-          });
+          logger.log("");
+          await runInteractiveUi({ serverUrl: remoteServerUrl });
+          return;
         }
 
-        await runInteractiveUi({ appRoot: handle.appRoot, serverUrl: handle.url }, onBootProgress);
+        // Print spacing before the live row; a later write would strand the row.
+        if (mode === "tui") logger.log("");
+        const buildProgress = mode === "tui" ? startCliLiveRow(logger) : undefined;
+        const onBootProgress = createDevBootProgressReporter(buildProgress);
+        buildProgress?.update("Building your agent");
+
+        let closed = false;
+        let server: DevelopmentServer | undefined;
+        const closeServer = async () => {
+          if (closed || server === undefined) {
+            return;
+          }
+
+          closed = true;
+          // No-op when this instance attached to a server another process owns.
+          await server.close();
+        };
+
+        try {
+          const startHost = runtime.startHost ?? (await loadStartHost());
+          server = startHost(appRoot, {
+            existing: mode === "tui" ? "attach-if-unconfigured" : "reject",
+            host: options.host,
+            onBootProgress,
+            port: options.port,
+          });
+          const handle = await server.start();
+
+          // The terminal UI's header already shows the server URL, and startup
+          // no longer clears the screen, so the line would linger as noise.
+          // Headless consumers (scripts, scenario tests) still parse it.
+          if (mode !== "tui") {
+            logger.log(
+              renderCliTaggedLine(theme, {
+                message: `server listening at ${handle.url}`,
+                tag: "dev",
+                tone: "success",
+              }),
+            );
+          }
+
+          if (mode === "headless") {
+            // An explicit `--no-ui` is intentional and silent; a non-TTY
+            // terminal that did not ask for headless gets a hint so the
+            // missing UI is not mistaken for a hang.
+            if (options.ui !== false && !interactive) {
+              logger.log(
+                renderCliTaggedLine(theme, {
+                  message: "Interactive UI disabled because the current terminal is not a TTY.",
+                  tag: "dev",
+                  tone: "warning",
+                }),
+              );
+            }
+
+            // Block until a signal arrives; the outer finally then closes the
+            // server. A second signal during that close is handled by the
+            // controller (diagnostics + deterministic exit).
+            await shutdown.firstSignal;
+            return;
+          }
+
+          await runInteractiveUi(
+            { appRoot: handle.appRoot, serverUrl: handle.url },
+            onBootProgress,
+          );
+        } finally {
+          buildProgress?.stop();
+          await closeServer();
+        }
       } finally {
-        buildProgress?.stop();
-        await closeServer();
+        shutdown.dispose();
       }
     });
 

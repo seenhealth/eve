@@ -60,12 +60,18 @@ export interface DevelopmentAuthoredRebuildCoordinator {
 export async function createDevelopmentAuthoredRebuildCoordinator(input: {
   readonly devServer: DrainedNitroDevServer;
   readonly initialHost: PreparedDevelopmentApplicationHost;
+  /** Aborts rebuild-triggered background prewarms when the server closes. */
+  readonly backgroundSignal?: AbortSignal;
+  /** Registers a rebuild-triggered background prewarm for bounded drain on close. */
+  readonly trackBackground?: (task: Promise<void>) => void;
 }): Promise<DevelopmentAuthoredRebuildCoordinator> {
   return new TransactionalDevelopmentAuthoredRebuildCoordinator({
     currentHostFingerprint: await computeDevelopmentHostFingerprint(input.initialHost),
     currentRuntimeFingerprint: input.initialHost.generation.fingerprint,
     devServer: input.devServer,
     initialHost: input.initialHost,
+    backgroundSignal: input.backgroundSignal,
+    trackBackground: input.trackBackground,
   });
 }
 
@@ -85,17 +91,23 @@ class TransactionalDevelopmentAuthoredRebuildCoordinator implements DevelopmentA
   #currentRuntimeFingerprint: string;
   readonly #devServer: DrainedNitroDevServer;
   readonly #usesParentWorkflowWorld: boolean;
+  readonly #backgroundSignal: AbortSignal | undefined;
+  readonly #trackBackground: ((task: Promise<void>) => void) | undefined;
 
   constructor(input: {
     readonly currentHostFingerprint: string;
     readonly currentRuntimeFingerprint: string;
     readonly devServer: DrainedNitroDevServer;
     readonly initialHost: PreparedDevelopmentApplicationHost;
+    readonly backgroundSignal?: AbortSignal;
+    readonly trackBackground?: (task: Promise<void>) => void;
   }) {
     this.#currentHost = input.initialHost;
     this.#currentHostFingerprint = input.currentHostFingerprint;
     this.#currentRuntimeFingerprint = input.currentRuntimeFingerprint;
     this.#devServer = input.devServer;
+    this.#backgroundSignal = input.backgroundSignal;
+    this.#trackBackground = input.trackBackground;
     this.#usesParentWorkflowWorld = usesParentDevelopmentWorkflowWorld(
       input.initialHost.compileResult.manifest.config.experimental?.workflow?.world,
     );
@@ -155,7 +167,7 @@ class TransactionalDevelopmentAuthoredRebuildCoordinator implements DevelopmentA
         this.#commitState(committedHost, nextHostFingerprint, nextRuntimeFingerprint);
         nextHost = undefined;
         environmentReload.commit();
-        startSandboxPrewarmAfterCommit(committedHost, input.changedPaths);
+        this.#startSandboxPrewarmAfterCommit(committedHost, input.changedPaths);
         return { host: committedHost, kind: "runtime" };
       }
 
@@ -167,7 +179,7 @@ class TransactionalDevelopmentAuthoredRebuildCoordinator implements DevelopmentA
       });
       nextHost = undefined;
       environmentReload.commit();
-      startSandboxPrewarmAfterCommit(result.host, input.changedPaths);
+      this.#startSandboxPrewarmAfterCommit(result.host, input.changedPaths);
       return result;
     } catch (error) {
       if (error instanceof PostCommitDevelopmentRebuildError) {
@@ -181,6 +193,18 @@ class TransactionalDevelopmentAuthoredRebuildCoordinator implements DevelopmentA
         throw error;
       }
       throw await discardFailedHost(error, nextHost);
+    }
+  }
+
+  #startSandboxPrewarmAfterCommit(
+    host: PreparedDevelopmentApplicationHost,
+    changedPaths: readonly string[],
+  ): void {
+    const task = startSandboxPrewarmAfterCommit(host, changedPaths, {
+      signal: this.#backgroundSignal,
+    });
+    if (task !== undefined) {
+      this.#trackBackground?.(task);
     }
   }
 
@@ -269,18 +293,20 @@ function retainActiveHostWorkspace(
 function startSandboxPrewarmAfterCommit(
   host: PreparedDevelopmentApplicationHost,
   changedPaths: readonly string[],
-): void {
+  options: { readonly signal?: AbortSignal } = {},
+): Promise<void> | undefined {
   if (!hasSandboxRelatedChange(host.compileResult.project.agentRoot, changedPaths)) {
-    return;
+    return undefined;
   }
   const artifactsConfig = createDevelopmentNitroArtifactsConfig({
     appRoot: host.appRoot,
     configuredWorld: host.compileResult.manifest.config.experimental?.workflow?.world,
   });
-  startDevelopmentSandboxPrewarmInBackground({
+  return startDevelopmentSandboxPrewarmInBackground({
     appRoot: host.appRoot,
     compiledArtifactsSource: resolveNitroCompiledArtifactsSource(artifactsConfig),
     log: (message) => console.log(message),
+    signal: options.signal,
   });
 }
 

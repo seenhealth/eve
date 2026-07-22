@@ -16,15 +16,16 @@ import {
 } from "#protocol/routes.js";
 import { resolveDiscoveryProject } from "#discover/project.js";
 import { DevelopmentServerState } from "#internal/nitro/host/dev-server-state.js";
-import { toErrorMessage } from "#shared/errors.js";
+import {
+  closeDevelopmentServerResources,
+  createDevelopmentServerCleanupError,
+  createDevelopmentServerStartupCleanupError,
+} from "#internal/nitro/host/dev-server-teardown.js";
 import { isEveServerHealthy } from "#shared/eve-server-health.js";
 import { isLoopbackServerUrl } from "#shared/network-address.js";
 import { handleDevRuntimeArtifactsRequest } from "#internal/nitro/routes/dev-runtime-artifacts.js";
 import { resolveNitroCompiledArtifactsSource } from "#internal/nitro/routes/runtime-artifacts.js";
-import {
-  pruneLocalSandboxTemplatesInBackground,
-  stopDevelopmentSandboxResources,
-} from "#execution/sandbox/bindings/local.js";
+import { pruneLocalSandboxTemplatesInBackground } from "#execution/sandbox/bindings/local.js";
 import { startDevelopmentSandboxPrewarmInBackground } from "#execution/sandbox/development-prewarm.js";
 import {
   createDevelopmentSandboxRunId,
@@ -222,78 +223,6 @@ function addDevelopmentControlHandler(input: {
   });
 }
 
-async function closeDevelopmentServerResources(input: {
-  readonly appRoot: string;
-  readonly authoredSourceWatcher: AuthoredSourceWatcherHandle | undefined;
-  readonly devServer: NitroDevelopmentServer | undefined;
-  readonly developmentSandboxRunId: string;
-  readonly nitro: Nitro | undefined;
-  readonly workflowWorld: ParentDevelopmentWorkflowWorld | undefined;
-}): Promise<{ readonly errors: readonly unknown[]; readonly listenerClosed: boolean }> {
-  const errors: unknown[] = [];
-  const attempt = async (operation: () => Promise<void>): Promise<boolean> => {
-    try {
-      await operation();
-      return true;
-    } catch (error) {
-      errors.push(error);
-      return false;
-    }
-  };
-
-  const authoredSourceWatcher = input.authoredSourceWatcher;
-  if (authoredSourceWatcher !== undefined) {
-    await attempt(() => authoredSourceWatcher.close());
-  }
-  const devServer = input.devServer;
-  const listenerClosed = devServer === undefined ? true : await attempt(() => devServer.close());
-  const workflowWorld = input.workflowWorld;
-  if (workflowWorld !== undefined) {
-    await attempt(() => workflowWorld.close());
-  }
-  const nitro = input.nitro;
-  if (nitro !== undefined) {
-    await attempt(() => nitro.close());
-  }
-  await attempt(() =>
-    stopDevelopmentSandboxResources({
-      appRoot: input.appRoot,
-      devRunId: input.developmentSandboxRunId,
-      log: (message) => console.warn(`[eve:dev] ${message}`),
-    }),
-  );
-
-  return { errors, listenerClosed };
-}
-
-function createDevelopmentServerCleanupError(errors: readonly unknown[]): Error | undefined {
-  if (errors.length === 0) {
-    return undefined;
-  }
-
-  if (errors.length === 1) {
-    const error = errors[0];
-    return error instanceof Error
-      ? error
-      : new Error(`Failed to close the development server: ${toErrorMessage(error)}`, {
-          cause: error,
-        });
-  }
-
-  return new AggregateError(errors, "Multiple development-server resources failed to close.");
-}
-
-function createDevelopmentServerStartupCleanupError(
-  startupError: unknown,
-  cleanupErrors: readonly unknown[],
-): AggregateError {
-  return new AggregateError(
-    [startupError, ...cleanupErrors],
-    `${toErrorMessage(startupError)} Cleanup also failed.`,
-    { cause: startupError },
-  );
-}
-
 async function listenForDevelopmentServer(input: {
   readonly devServer: NitroDevelopmentServer;
   readonly host: string;
@@ -389,6 +318,17 @@ async function startNitroDevelopmentServer(
   let initialGenerationPublished = false;
   let initialWorkspaceTransferred = false;
 
+  // Owns every fire-and-forget task the dev server starts (sandbox prewarm,
+  // template prune). Aborting the controller signals in-flight work to stop at
+  // its next checkpoint; closing awaits the tracked promises under a bounded
+  // deadline so none can keep the event loop alive after shutdown.
+  const backgroundController = new AbortController();
+  const backgroundTasks = new Set<Promise<void>>();
+  const trackBackground = (task: Promise<void>): void => {
+    backgroundTasks.add(task);
+    void task.finally(() => backgroundTasks.delete(task));
+  };
+
   try {
     const preparedHost = await devBootPhase(
       "compiling agent",
@@ -402,7 +342,11 @@ async function startNitroDevelopmentServer(
         configuredWorld: preparedHost.compileResult.manifest.config.experimental?.workflow?.world,
       }),
     );
-    pruneLocalSandboxTemplatesInBackground(preparedHost.appRoot);
+    trackBackground(
+      pruneLocalSandboxTemplatesInBackground(preparedHost.appRoot, {
+        signal: backgroundController.signal,
+      }),
+    );
     const activeNitro = await devBootPhase(
       "creating dev server",
       () => createDevelopmentApplicationNitro(preparedHost),
@@ -476,14 +420,19 @@ async function startNitroDevelopmentServer(
       options.onBootProgress,
     );
     await workflowWorld?.start();
-    startDevelopmentSandboxPrewarmInBackground({
-      appRoot: preparedHost.appRoot,
-      compiledArtifactsSource,
-    });
+    trackBackground(
+      startDevelopmentSandboxPrewarmInBackground({
+        appRoot: preparedHost.appRoot,
+        compiledArtifactsSource,
+        signal: backgroundController.signal,
+      }),
+    );
 
     const rebuildCoordinator = await createDevelopmentAuthoredRebuildCoordinator({
       devServer: activeDevServer,
       initialHost: preparedHost,
+      backgroundSignal: backgroundController.signal,
+      trackBackground,
     });
 
     authoredSourceWatcher = await devBootPhase(
@@ -514,6 +463,8 @@ async function startNitroDevelopmentServer(
         const cleanup = await closeDevelopmentServerResources({
           appRoot: project.appRoot,
           authoredSourceWatcher: authoredSourceWatcherOnClose,
+          backgroundController,
+          backgroundTasks,
           devServer: devServerOnClose,
           developmentSandboxRunId,
           nitro: undefined,
@@ -544,6 +495,8 @@ async function startNitroDevelopmentServer(
     const cleanup = await closeDevelopmentServerResources({
       appRoot: project.appRoot,
       authoredSourceWatcher,
+      backgroundController,
+      backgroundTasks,
       devServer,
       developmentSandboxRunId,
       nitro,

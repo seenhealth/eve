@@ -14,11 +14,26 @@ import type { AgentInfoResponse } from "../../src/internal/nitro/routes/agent-in
 /**
  * Handle to a spawned `eve dev --no-ui` process serving a scenario app.
  */
+export interface EveDevExit {
+  readonly code: number | null;
+  readonly signal: NodeJS.Signals | null;
+  /** Milliseconds from sending the signal to the process exiting. */
+  readonly durationMs: number;
+  /** True when the deadline elapsed and the harness escalated to SIGKILL. */
+  readonly forcedKill: boolean;
+}
+
 export interface RunningEveDev {
   crash(): Promise<void>;
   readonly stderr: () => string;
   readonly stdout: () => string;
   readonly url: string;
+  /**
+   * Sends `signal` once and resolves with how the process exited. If it does
+   * not exit within `deadlineMs`, escalates to SIGKILL and reports
+   * `forcedKill: true` — the signature of a shutdown hang.
+   */
+  signalAndAwaitExit(signal: NodeJS.Signals, deadlineMs?: number): Promise<EveDevExit>;
   stop(): Promise<void>;
 }
 
@@ -78,11 +93,45 @@ export async function startEveDev(
     },
     stderr: () => stderr,
     stdout: () => stdout,
+    async signalAndAwaitExit(signal, deadlineMs = 10_000) {
+      return await signalEveDevChildAndAwaitExit(child, signal, deadlineMs);
+    },
     async stop() {
       await stopEveDevChild(child);
     },
     url,
   };
+}
+
+async function signalEveDevChildAndAwaitExit(
+  child: ChildProcessByStdio<null, Readable, Readable>,
+  signal: NodeJS.Signals,
+  deadlineMs: number,
+): Promise<EveDevExit> {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return { code: child.exitCode, signal: child.signalCode, durationMs: 0, forcedKill: false };
+  }
+
+  const startedAt = Date.now();
+  return await new Promise<EveDevExit>((resolve) => {
+    let forcedKill = false;
+    const killTimer = setTimeout(() => {
+      forcedKill = true;
+      child.kill("SIGKILL");
+    }, deadlineMs);
+
+    child.once("exit", (code, exitSignal) => {
+      clearTimeout(killTimer);
+      resolve({
+        code,
+        signal: exitSignal,
+        durationMs: Date.now() - startedAt,
+        forcedKill,
+      });
+    });
+
+    child.kill(signal);
+  });
 }
 
 async function stopEveDevChild(

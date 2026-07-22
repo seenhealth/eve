@@ -62,6 +62,13 @@ interface PrewarmSandboxesInput {
   readonly dispatch?: SandboxBackendPrewarmDispatch;
   readonly onPrewarmSignature?: (signature: string) => void;
   readonly shouldPrewarmSignature?: (signature: string) => boolean;
+  /**
+   * Aborts prewarming at the next checkpoint. The individual backend
+   * `prewarm(...)` call cannot itself be interrupted mid-flight, so callers
+   * that need a hard bound (e.g. `eve dev` shutdown) also cap how long they
+   * await the returned promise.
+   */
+  readonly signal?: AbortSignal;
 }
 
 /**
@@ -72,12 +79,14 @@ interface PrewarmSandboxesInput {
  * for each backend template.
  */
 export async function prewarmSandboxes(input: PrewarmSandboxesInput): Promise<void> {
+  input.signal?.throwIfAborted();
   const targets = await collectPrewarmTargets(input);
 
   if (targets.length === 0) {
     return;
   }
 
+  input.signal?.throwIfAborted();
   const signature = createPrewarmSignature(targets);
   if (input.shouldPrewarmSignature?.(signature) === false) {
     return;
@@ -93,6 +102,7 @@ export async function prewarmSandboxes(input: PrewarmSandboxesInput): Promise<vo
 
   const results = await Promise.all(
     targets.map(async ({ backend, label, input: prewarmInput }) => {
+      input.signal?.throwIfAborted();
       const logBackendProgress = (message: string) => {
         if (!shouldLogSandboxPrewarmProgress(message)) {
           return;
@@ -160,7 +170,9 @@ export async function prewarmAppSandboxes(input: {
   readonly dispatch?: SandboxBackendPrewarmDispatch;
   readonly onPrewarmSignature?: (signature: string) => void;
   readonly shouldPrewarmSignature?: (signature: string) => boolean;
+  readonly signal?: AbortSignal;
 }): Promise<void> {
+  input.signal?.throwIfAborted();
   const compiledArtifactsSource =
     input.compiledArtifactsSource ??
     createAuthoredSourceRuntimeCompiledArtifactsSource(input.appRoot);
@@ -181,6 +193,7 @@ export async function prewarmAppSandboxes(input: {
     log: input.log,
     onPrewarmSignature: input.onPrewarmSignature,
     shouldPrewarmSignature: input.shouldPrewarmSignature,
+    signal: input.signal,
   });
 }
 

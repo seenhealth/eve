@@ -2468,6 +2468,25 @@ export class TerminalRenderer implements AgentTUIRenderer {
     this.#paint();
   }
 
+  /**
+   * Unwinds the current interaction the way a user's Ctrl-C would, so an
+   * external stop (an OS SIGINT/SIGTERM handled by the CLI) settles the run
+   * loop instead of leaving it blocked on a prompt read or a streaming turn.
+   * At a prompt the reader is rejected; mid-turn the stream is interrupted and
+   * the loop returns to the prompt, where the runner's stop flag ends it.
+   */
+  requestInterrupt(): void {
+    this.#interrupted = true;
+    if (this.#resolveStreamInterrupt !== undefined) {
+      this.#turnIndicator = { kind: "idle" };
+      this.#status = "Interrupted";
+      this.#resolveStreamInterrupt();
+      this.#paint();
+      return;
+    }
+    this.#stop();
+  }
+
   shutdown(): void {
     this.#stop();
     // The parting line: the boot banner's dim counterpart, written after the

@@ -36,6 +36,8 @@ export interface RunDevelopmentTuiInput extends TuiDisplayOptions {
   readonly initialInput?: string;
   /** Reports local CLI boot phases. Omitted for remote and programmatic TUI runs. */
   readonly onBootProgress?: DevBootProgressReporter;
+  /** Aborts when the CLI catches an OS signal, unwinding the TUI run loop. */
+  readonly shutdownSignal?: AbortSignal;
 }
 
 function prepareRemoteTarget(target: RemoteDevelopmentTarget) {
@@ -80,7 +82,7 @@ function prepareDevelopmentTarget(target: DevelopmentTuiTarget): PreparedDevelop
  * the inline error region rather than crashing the command.
  */
 export async function runDevelopmentTui(input: RunDevelopmentTuiInput): Promise<void> {
-  const { target, headers, initialInput, onBootProgress, ...display } = input;
+  const { target, headers, initialInput, onBootProgress, shutdownSignal, ...display } = input;
   const prepared = prepareDevelopmentTarget(target);
   const { serverUrl } = target;
   const headerOptions = headers === undefined ? {} : { headers };
@@ -119,6 +121,7 @@ export async function runDevelopmentTui(input: RunDevelopmentTuiInput): Promise<
   }
   if (initialInput !== undefined) options.initialInput = initialInput;
   if (onBootProgress !== undefined) options.onBootProgress = onBootProgress;
+  if (shutdownSignal !== undefined) options.shutdownSignal = shutdownSignal;
 
   const diagnostics =
     prepared.kind === "local"
