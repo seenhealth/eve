@@ -499,12 +499,12 @@ export default channel;
 Credentials come from the \`createMessengerAdapter\` config or the adapter's environment variables; see the [Messenger adapter docs](https://chat-sdk.dev/adapters/official/messenger).`,
     configure: `The adapter mounts its webhook at \`/eve/v1/messenger\`. Point your Messenger webhook at it. The adapter owns provider auth, verification, and delivery, while eve owns session dispatch, streaming, typing, and human-in-the-loop. See the [Chat SDK channel docs](/docs/channels/chat-sdk) for routes, streaming, and state options.`,
   },
-  "chat-sdk-matrix": {
+  "chat-sdk-beeper": {
     logo: "matrix",
     docsHref: "/docs/channels/chat-sdk",
     badge: "Chat SDK",
     keywords: ["chat sdk", "matrix", "beeper", "encrypted chat", "e2ee", "signal", "instagram"],
-    install: `Install eve, Chat SDK, the Matrix adapter, and a state adapter:
+    install: `Install eve, Chat SDK, the Beeper Matrix adapter, and a state adapter:
 
 \`\`\`bash
 npm install eve@latest chat @beeper/chat-adapter-matrix @chat-adapter/state-memory
@@ -541,7 +541,7 @@ await bot.initialize();
 export default channel;
 \`\`\`
 
-See the [Matrix adapter documentation](https://chat-sdk.dev/adapters/vendor-official/matrix) for all supported events and credentials.`,
+See the [Beeper Matrix adapter documentation](https://chat-sdk.dev/adapters/vendor-official/matrix) for all supported events and credentials.`,
     configure: `Set the Matrix homeserver, access token, and bot identity environment variables documented by Beeper. This adapter consumes Matrix sync rather than webhooks, so call \`bot.initialize()\` and run eve in a long-lived Node.js process. It requires Node.js 22 or newer and a durable state adapter in production. See the [Chat SDK channel docs](/docs/channels/chat-sdk) for eve session dispatch, state, streaming, and human-in-the-loop behavior.`,
   },
 };
