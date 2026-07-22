@@ -491,6 +491,53 @@ export default channel;
 Credentials come from the \`createMessengerAdapter\` config or the adapter's environment variables; see the [Messenger adapter docs](https://chat-sdk.dev/adapters/official/messenger).`,
     configure: `The adapter mounts its webhook at \`/eve/v1/messenger\`. Point your Messenger webhook at it. The adapter owns provider auth, verification, and delivery, while eve owns session dispatch, streaming, typing, and human-in-the-loop. See the [Chat SDK channel docs](/docs/channels/chat-sdk) for routes, streaming, and state options.`,
   },
+  "chat-sdk-agentphone": {
+    logo: "agentphone",
+    docsHref: "/docs/channels/chat-sdk",
+    badge: "Provider official",
+    keywords: ["chat sdk", "agentphone", "sms", "mms", "imessage", "voice", "phone", "calls"],
+    install: `Install eve, Chat SDK, the AgentPhone adapter, and a state adapter:
+
+\`\`\`bash
+npm install eve@latest chat @agentphone/chat-sdk-adapter @chat-adapter/state-memory
+\`\`\`
+
+The in-memory state store is for local development. Use Redis or PostgreSQL in production. This adapter is built and maintained by AgentPhone.`,
+    quickStart: `Create \`agent/channels/agentphone.ts\`:
+
+\`\`\`ts
+// agent/channels/agentphone.ts
+import { createAgentPhoneAdapter } from "@agentphone/chat-sdk-adapter";
+import { createMemoryState } from "@chat-adapter/state-memory";
+import { chatSdkChannel } from "eve/channels/chat-sdk";
+
+export const { bot, channel, send } = chatSdkChannel({
+  userName: "My Agent",
+  adapters: {
+    agentphone: createAgentPhoneAdapter({
+      apiKey: process.env.AGENTPHONE_API_KEY!,
+      agentId: process.env.AGENTPHONE_AGENT_ID!,
+      webhookSecret: process.env.AGENTPHONE_WEBHOOK_SECRET!,
+    }),
+  },
+  state: createMemoryState(),
+});
+
+bot.onNewMention(async (thread, message) => {
+  await thread.subscribe();
+  await send(message.text, { thread });
+});
+
+bot.onSubscribedMessage(async (thread, message) => {
+  await send(message.text, { thread });
+});
+
+export default channel;
+\`\`\`
+
+See the [AgentPhone adapter documentation](https://chat-sdk.dev/adapters/vendor-official/agentphone) for supported events, capabilities, and credentials.`,
+    configure: `Create an AgentPhone agent, set \`AGENTPHONE_API_KEY\`, \`AGENTPHONE_AGENT_ID\`, and \`AGENTPHONE_WEBHOOK_SECRET\`, then point its webhook at \`/eve/v1/agentphone\`. The adapter handles SMS, MMS, iMessage, and completed voice-call transcripts. See the [Chat SDK channel docs](/docs/channels/chat-sdk) for eve session dispatch, state, streaming, and human-in-the-loop behavior.`,
+  },
 };
 
 const extensionPresentations: Record<string, ExtensionPresentation> = {
