@@ -68,6 +68,34 @@ describe("buildTelemetryRuntimeContext", () => {
     expect(build()).toEqual(FRAMEWORK_KEYS);
   });
 
+  it("emits current user identity without arbitrary auth attributes", () => {
+    const ctx = new ContextContainer();
+    ctx.set(AuthKey, {
+      attributes: { display_name: "Ada Lovelace", email: "ada@example.com" },
+      authenticator: "slack-webhook",
+      principalId: "slack:T1:U1",
+      principalType: "user",
+    });
+
+    expect(contextStorage.run(ctx, () => build())).toEqual({
+      ...FRAMEWORK_KEYS,
+      "eve.user.id": "slack:T1:U1",
+      "eve.user.name": "Ada Lovelace",
+    });
+  });
+
+  it("omits service principals from user identity", () => {
+    const ctx = new ContextContainer();
+    ctx.set(AuthKey, {
+      attributes: {},
+      authenticator: "slack-webhook",
+      principalId: "slack:T1:bot:B1",
+      principalType: "service",
+    });
+
+    expect(contextStorage.run(ctx, () => build())).toEqual(FRAMEWORK_KEYS);
+  });
+
   it("merges authored step.started runtime context beneath framework keys", () => {
     const runtimeContext = build({
       authored: { events: { "step.started": () => ({ runtimeContext: { team: "platform" } }) } },
