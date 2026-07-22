@@ -494,7 +494,7 @@ Credentials come from the \`createMessengerAdapter\` config or the adapter's env
   "chat-sdk-resend": {
     logo: "resend",
     docsHref: "/docs/channels/chat-sdk",
-    badge: "Chat SDK",
+    badge: "Provider official",
     keywords: [
       "chat sdk",
       "email",
