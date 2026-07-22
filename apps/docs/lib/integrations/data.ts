@@ -502,7 +502,7 @@ Credentials come from the \`createMessengerAdapter\` config or the adapter's env
   "chat-sdk-beeper": {
     logo: "matrix",
     docsHref: "/docs/channels/chat-sdk",
-    badge: "Chat SDK",
+    badge: "Provider official",
     keywords: ["chat sdk", "matrix", "beeper", "encrypted chat", "e2ee", "signal", "instagram"],
     install: `Install eve, Chat SDK, the Beeper Matrix adapter, and a state adapter:
 
