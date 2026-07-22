@@ -502,7 +502,7 @@ Credentials come from the \`createMessengerAdapter\` config or the adapter's env
   "chat-sdk-lark": {
     logo: "lark",
     docsHref: "/docs/channels/chat-sdk",
-    badge: "Chat SDK",
+    badge: "Provider official",
     keywords: ["chat sdk", "lark", "feishu", "bytedance", "cardkit", "messaging"],
     install: `Install eve, Chat SDK, the Lark / Feishu adapter, and a state adapter:
 
