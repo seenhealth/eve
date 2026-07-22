@@ -173,7 +173,7 @@ export const INTEGRATIONS: readonly IntegrationEntry[] = [
   },
   {
     slug: "chat-sdk-resend",
-    name: "Email (Resend)",
+    name: "Resend",
     kind: "channel",
     tagline: "Send and receive threaded email through Resend via the Chat SDK.",
     surfaces: { scaffoldable: false, gallery: true },
