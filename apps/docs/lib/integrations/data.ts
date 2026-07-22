@@ -347,7 +347,7 @@ import { createGoogleChatAdapter } from "@chat-adapter/gchat";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import { chatSdkChannel } from "eve/channels/chat-sdk";
 
-export const { bot, channel, send } = chatSdkChannel({
+export const { bot, channel } = chatSdkChannel({
   userName: "My Agent",
   adapters: { gchat: createGoogleChatAdapter() },
   state: createMemoryState(),
@@ -355,11 +355,19 @@ export const { bot, channel, send } = chatSdkChannel({
 
 bot.onNewMention(async (thread, message) => {
   await thread.subscribe();
-  await send(message.text, { thread });
+  await channel.receive({
+    message: message.text,
+    target: { adapterName: "lark", threadId: thread.id },
+    auth: null,
+  });
 });
 
 bot.onSubscribedMessage(async (thread, message) => {
-  await send(message.text, { thread });
+  await channel.receive({
+    message: message.text,
+    target: { adapterName: "lark", threadId: thread.id },
+    auth: null,
+  });
 });
 
 export default channel;
@@ -490,6 +498,51 @@ export default channel;
 
 Credentials come from the \`createMessengerAdapter\` config or the adapter's environment variables; see the [Messenger adapter docs](https://chat-sdk.dev/adapters/official/messenger).`,
     configure: `The adapter mounts its webhook at \`/eve/v1/messenger\`. Point your Messenger webhook at it. The adapter owns provider auth, verification, and delivery, while eve owns session dispatch, streaming, typing, and human-in-the-loop. See the [Chat SDK channel docs](/docs/channels/chat-sdk) for routes, streaming, and state options.`,
+  },
+  "chat-sdk-lark": {
+    logo: "lark",
+    docsHref: "/docs/channels/chat-sdk",
+    badge: "Chat SDK",
+    keywords: ["chat sdk", "lark", "feishu", "bytedance", "cardkit", "messaging"],
+    install: `Install eve, Chat SDK, the Lark / Feishu adapter, and a state adapter:
+
+\`\`\`bash
+npm install eve@latest chat @larksuite/vercel-chat-adapter @chat-adapter/state-memory
+\`\`\`
+
+The in-memory state store is for local development. Use Redis or PostgreSQL in production. The adapter is vendor-official.`,
+    quickStart: `Create \`agent/channels/lark.ts\`:
+
+\`\`\`ts
+// agent/channels/lark.ts
+import { createLarkAdapter } from "@larksuite/vercel-chat-adapter";
+import { createMemoryState } from "@chat-adapter/state-memory";
+import { chatSdkChannel } from "eve/channels/chat-sdk";
+
+export const { bot, channel, send } = chatSdkChannel({
+  userName: "My Agent",
+  adapters: {
+    lark: createLarkAdapter(),
+  },
+  state: createMemoryState(),
+});
+
+bot.onNewMention(async (thread, message) => {
+  await thread.subscribe();
+  await send(message.text, { thread });
+});
+
+bot.onSubscribedMessage(async (thread, message) => {
+  await send(message.text, { thread });
+});
+
+await bot.initialize();
+
+export default channel;
+\`\`\`
+
+See the [Lark / Feishu adapter documentation](https://chat-sdk.dev/adapters/vendor-official/lark) for all supported events and credentials.`,
+    configure: `Create a Lark or Feishu app and set \`LARK_APP_ID\` and \`LARK_APP_SECRET\`. The adapter uses Lark’s WebSocket long connection rather than an HTTP webhook, so call \`bot.initialize()\` and run eve in a long-lived Node.js process. This is a vendor-official Chat SDK adapter built on the official Lark Node SDK. See the [Chat SDK channel docs](/docs/channels/chat-sdk) for eve session dispatch, state, streaming, and human-in-the-loop behavior.`,
   },
 };
 
